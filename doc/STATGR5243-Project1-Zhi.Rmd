@@ -1,0 +1,300 @@
+---
+title: "STATGR5243 Project 1"
+author: "ZHI HUANG"
+date: "1/30/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include = FALSE,message = FALSE}
+set.seed(1)
+library("rvest")
+library("tibble")
+library("syuzhet")
+library("sentimentr")
+library("gplots")
+library("dplyr")
+library("tm")
+library("factoextra")
+library("beeswarm")
+library("scales")
+library("RColorBrewer")
+library("RANN")
+library("stringr")
+library("wordcloud")
+library("wordcloud2")
+library("tidytext")
+library("knitr")
+library("fmsb")
+library("janitor")
+library("topicmodels")
+```
+
+```{r,include = FALSE}
+df <- read.csv("~/Desktop/philosophy_data.csv")
+```
+
+## Introduction
+In the long history of philosophy, there are multiple famous pairs of opposite schools. For example, optimist versus pessimist, realist versus idealist, and capitalist versus communist. In this project, I will focus on exploring the differences between empiricism and rationalism. The data set we utilized is built on 360808 sentences from 10 schools. Since we pay more attention on the comparison between empiricism and rationalism, I created two subsets. The sub-data of empiricism has 19931 sentences from Locke, Hume, Berkeley. On the other hand, the dataset of rationalism has 22949 sentences from Spinoza, Leibniz, Descartes, Malebranche.
+
+
+## Table of content
+### 1. Basic visualizations 
+####   a) Durations
+####   b) Length analysis
+### 2. Word cloud
+### 3. Sentiment Analysis 
+### 4. Topic Modeling
+
+```{r, include = FALSE}
+emp_df = df %>% filter(school %in% c("empiricism"))
+rat_df = df %>% filter(school %in% c("rationalism"))
+comb_df = rbind(rat_df,emp_df)
+```
+
+
+### 1. Basic visualizations 
+####   a) Durations
+```{r}
+ggplot(comb_df, aes(x=original_publication_date)) +
+  geom_line( aes(y=school))
+```
+```{r}
+barplot(table(rat_df$original_publication_date),
+        main = "Number of Citations for rationalism in the history",
+        xlab = "Years",
+        ylab = "Count",
+        col = "yellow")
+```
+
+```{r}
+barplot(table(emp_df$original_publication_date),
+        main = "Number of Citations for empiricism in the history",
+        xlab = "Years",
+        ylab = "Count",
+        col = "darkred")
+```
+In the first section, to have a basic understanding to two schools, we drew some easy graphs to demonstrate some features. According to the above comparing line graph, rationalism is originated in 1640 and diminished in around 1710, while empiricism was active in between 1690  to 1780. Two schools co-existed for only twenty years in between 1690 to 1710. The way two schools came into people's eyes are quite different. From two bar chart, when rationalism appeared, it was quiet, less than 1000 sentences are brought to public at the first two peirods; then, at the mid time, a burst occurred, which created more than 10 thousands sentences about rationalism. However, in 1689, more than 9 thousands sentences of empiricism was written at once.
+
+#### b) Length analysis
+```{r}
+rat_word_count = lengths(gregexpr("\\W+", rat_df$sentence_str))
+beeswarm(rat_word_count~rat_df$author, 
+ 
+         pch = 19, 
+         col = c(rgb(0.25, 0.63, 1, 0.75),
+                 rgb(0.5, 0.88, 0.6, 0.75),
+                 rgb(0.75, 0.43, 0.37, 0.75),
+                 rgb(1, 0.43, 0.37, 0.75)),
+         corral = "gutter",
+         xlab="Number of words in a sentence.", ylab="",
+         main="empiricism sentence")
+```
+
+
+```{r}
+emp_word_count = lengths(gregexpr("\\W+", emp_df$sentence_str))
+beeswarm(emp_word_count~emp_df$author, 
+         pch = 19, 
+         col = c(rgb(0.25, 0.63, 1, 0.75),
+                 rgb(1, 0.88, 0.6, 0.75),
+                 rgb(0.97, 0.43, 0.37, 0.75)),
+         corral = "gutter",
+         xlab="Number of words in a sentence.", ylab="",
+         main="empiricism sentence")
+```
+
+
+
+### 2. Word cloud
+```{r,warning = FALSE}
+emp_docs <- Corpus(VectorSource(emp_df$sentence_str))
+emp_docs <- emp_docs %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(stripWhitespace)
+emp_docs <- tm_map(emp_docs, content_transformer(tolower))
+emp_docs <- tm_map(emp_docs, removeWords, stopwords("smart"))
+emp_docs <- tm_map(emp_docs, stemDocument, language = "en")
+emp_docs <- tm_map(emp_docs, stripWhitespace)
+
+emp_dtm <- TermDocumentMatrix(emp_docs) 
+emp_matrix <- as.matrix(emp_dtm) 
+emp_words <- sort(rowSums(emp_matrix),decreasing=TRUE) 
+emp_wcdf <- data.frame(word = names(emp_words),freq=emp_words)
+
+wordcloud(words = emp_wcdf$word, freq = emp_wcdf$freq, min.freq = 1,           
+          max.words=200, random.order=FALSE, rot.per=0.35,            
+          colors=brewer.pal(8, "Dark2"))
+```
+
+```{r}
+barplot(emp_wcdf[1:5,]$freq, las = 2, names.arg = emp_wcdf[1:5,]$word,
+        col ="lightgreen", main ="Top 5 most frequent words",
+        ylab = "Word frequencies")
+```
+
+```{r,warning = FALSE}
+rat_docs <- Corpus(VectorSource(rat_df$sentence_str))
+rat_docs <- rat_docs %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(stripWhitespace)
+rat_docs <- tm_map(rat_docs, content_transformer(tolower))
+rat_docs <- tm_map(rat_docs, removeWords, stopwords("smart"))
+
+rat_dtm <- TermDocumentMatrix(rat_docs) 
+rat_matrix <- as.matrix(rat_dtm) 
+rat_words <- sort(rowSums(rat_matrix),decreasing=TRUE) 
+rat_wcdf <- data.frame(word = names(rat_words),freq=rat_words)
+
+wordcloud(words = rat_wcdf$word, freq = rat_wcdf$freq, min.freq = 1,           
+          max.words=200, random.order=FALSE, rot.per=0.35,            
+          colors=brewer.pal(8, "Dark2"))
+```
+
+
+
+```{r}
+barplot(rat_wcdf[1:5,]$freq, las = 2, names.arg = rat_wcdf[1:5,]$word,
+        col ="lightgreen", main ="Top 5 most frequent words",
+        ylab = "Word frequencies")
+```
+
+### 3. Sentiment Analysis 
+```{r, warning=FALSE}
+set.seed(1)
+emp_sample = emp_df[sample(nrow(emp_df), 1000),]
+emp_sen = get_nrc_sentiment(emp_sample$sentence_str)
+head(emp_sen,10)
+```
+```{r,warning=FALSE}
+#citation: https://www.red-gate.com/simple-talk/databases/sql-server/bi-sql-server/text-mining-and-sentiment-analysis-with-r/
+t_emp_sen<-data.frame(t(emp_sen))
+t_emp_sen_new <- data.frame(rowSums(t_emp_sen[2:1000]))
+names(t_emp_sen_new)[1] <- "count"
+t_emp_sen_new<- cbind("sentiment" = rownames(t_emp_sen_new), t_emp_sen_new)
+rownames(t_emp_sen_new) <- NULL
+t_emp_sen_new2<-t_emp_sen_new[1:10,]
+quickplot(sentiment, data=t_emp_sen_new2, weight=count, geom="bar", fill=sentiment, ylab="count")+ggtitle("emotion in empiricism")
+```
+
+```{r, warning=FALSE}
+set.seed(1)
+rat_sample = rat_df[sample(nrow(rat_df), 1000),]
+rat_sen = get_nrc_sentiment(rat_sample$sentence_str)
+head(rat_sen,10)
+```
+
+```{r,warning=FALSE}
+#citation: https://www.red-gate.com/simple-talk/databases/sql-server/bi-sql-server/text-mining-and-sentiment-analysis-with-r/
+t_rat_sen<-data.frame(t(rat_sen))
+t_rat_sen_new <- data.frame(rowSums(t_rat_sen[2:1000]))
+names(t_rat_sen_new)[1] <- "count"
+t_rat_sen_new<- cbind("sentiment" = rownames(t_rat_sen_new), t_rat_sen_new)
+rownames(t_rat_sen_new) <- NULL
+t_rat_sen_new2<-t_rat_sen_new[1:10,]
+quickplot(sentiment, data=t_rat_sen_new2, weight=count, geom="bar", fill=sentiment, ylab="count")+ggtitle("emotion in rationalism")
+```
+
+
+
+
+```{r}
+t_rat_sen_new3 = data.frame(t(t_rat_sen_new2))
+t_rat_sen_new3 = t_rat_sen_new3 %>% row_to_names(row_number = 1)
+t_rat_sen_new3 <- t_rat_sen_new3 %>% mutate(across(, ~as.integer(.)))
+
+t_emp_sen_new3 = data.frame(t(t_emp_sen_new2))
+t_emp_sen_new3 = t_emp_sen_new3 %>% row_to_names(row_number = 1)
+t_emp_sen_new3 <- t_emp_sen_new3 %>% mutate(across(, ~as.integer(.)))
+
+rader = rbind(t_emp_sen_new3 ,t_rat_sen_new3)
+rader <- rbind(rep(1500,5) , rep(0,5) , rader)
+rader
+```
+
+
+
+```{r}
+colors_border=c( rgb(0.2,0.5,0.5,0.9), rgb(0.8,0.2,0.5,0.9))
+colors_in=c( rgb(0.2,0.5,0.5,0.4), rgb(0.8,0.2,0.5,0.4))
+
+# plot with default options:
+radarchart(rader  , axistype=1 , 
+    #custom polygon
+    pcol=colors_border , pfcol=colors_in , plwd=4 , plty=1,
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,1500,500), cglwd=0.8,
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+### 4. Topic Modeling
+```{r}
+minimumFrequency <- 3
+emp_dtm2 <- DocumentTermMatrix(emp_docs, control = list(bounds = list(global = c(minimumFrequency, Inf))))
+sel_idx <- slam::row_sums(emp_dtm2) > 0
+emp_dtm2 <- emp_dtm2[sel_idx, ]
+
+emp_topicModel <- LDA(emp_dtm2, k = 3, method="Gibbs", control = list(seed = 1234))
+emp_topics <- tidy(emp_topicModel, matrix = "beta")
+emp_top_terms <- emp_topics %>%group_by(topic) %>% top_n(5, beta)%>% ungroup() %>% arrange(topic, -beta)
+
+emp_exampleTermData <- terms(emp_topicModel, 5)
+emp_exampleTermData
+```
+
+```{r}
+emp_top_terms %>% # take the top terms
+          mutate(term = reorder(term, beta)) %>% # sort terms by beta value 
+          ggplot(aes(term, beta, fill = factor(topic))) + # plot beta by theme
+          geom_col(show.legend = FALSE) + # as a bar plot
+          facet_wrap(~ topic, scales = "free") + # which each topic in a seperate plot
+          labs(x = NULL, y = "Beta") + # no x label, change y label 
+          coord_flip() # turn bars sideways
+```
+
+
+
+```{r}
+minimumFrequency <- 3
+rat_dtm2 <- DocumentTermMatrix(rat_docs, control = list(bounds = list(global = c(minimumFrequency, Inf))))
+sel_idx <- slam::row_sums(rat_dtm2) > 0
+rat_dtm2 <- rat_dtm2[sel_idx, ]
+
+rat_topicModel <- LDA(rat_dtm2, k = 3, method="Gibbs", control = list(seed = 1234))
+rat_topics <- tidy(rat_topicModel, matrix = "beta")
+rat_top_terms <- rat_topics  %>%group_by(topic) %>% top_n(5, beta)%>% ungroup() %>% arrange(topic, -beta)
+
+rat_exampleTermData <- terms(rat_topicModel, 5)
+rat_exampleTermData
+```
+
+
+```{r}
+rat_top_terms %>% 
+          mutate(term = reorder(term, beta)) %>% # sort terms by beta value 
+          ggplot(aes(term, beta, fill = factor(topic))) + # plot beta by theme
+          geom_col(show.legend = FALSE) + # as a bar plot
+          facet_wrap(~ topic, scales = "free") + # which each topic in a seperate plot
+          labs(x = NULL, y = "Beta") + # no x label, change y label 
+          coord_flip() # turn bars sideways
+```
+
+### citation: 
+https://towardsdatascience.com/create-a-word-cloud-with-r-bde3e7422e8a
+https://www.red-gate.com/simple-talk/databases/sql-server/bi-sql-server/text-mining-and-sentiment-analysis-with-r/
+https://www.tidytextmining.com/topicmodeling.html
+          
+
+          
+          
+          
+          
+          
+          
